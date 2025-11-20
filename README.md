@@ -79,6 +79,7 @@ You just need to submit a PR that includes at least: `./agent/{your_strategy}.py
 - ⚡ **MCP Toolchain Integration**: Modular tool ecosystem based on Model Context Protocol
 - 🔌 **Extensible Strategy Framework**: Support for third-party strategies and custom AI agent integration
 - ⏰ **Historical Replay Capability**: Time-period replay functionality with automatic future information filtering
+- 🔄 **GitHub Actions CI/CD**: Automated trading runs with artifact storage, result commits, and AI-powered analysis
 
 ---
 
@@ -542,6 +543,38 @@ cd docs
 python3 -m http.server 8000
 # Visit http://localhost:8000
 ```
+
+## 🔄 GitHub Actions Automation
+
+AI-Trader now supports **fully automated trading runs** using GitHub Actions! Run trading agents in the cloud, store results as artifacts, commit results to your repository, and analyze performance with AI.
+
+### ⚡ Quick Setup
+
+1. **Configure Secrets** (Settings → Secrets and variables → Actions):
+   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `ALPHAADVANTAGE_API_KEY`: Alpha Vantage API key
+   - `JINA_API_KEY`: Jina AI API key
+   - `TUSHARE_TOKEN`: (Optional) For A-share data
+
+2. **Run Workflow**:
+   - Go to **Actions** tab
+   - Select **AI-Trader Automated Trading**
+   - Click **Run workflow**
+   - Configure options and start
+
+### 🎯 Features
+
+- ✅ **Automated Trading**: Run on schedule or manually
+- 📦 **Artifact Storage**: Download logs, positions, and metrics
+- 💾 **Git Commits**: Optionally commit results to repository
+- 🧠 **AI Analysis**: Generate insights with AI agents
+- 🌍 **Multi-Market**: Supports US stocks, A-shares, and crypto
+
+### 📚 Learn More
+
+- **[GitHub Actions Guide](docs/GITHUB_ACTIONS_GUIDE.md)**: Complete setup and usage guide
+- **[Workflow README](.github/workflows/README.md)**: Technical workflow documentation
+- **[Analysis Script](scripts/analyze_results.py)**: Standalone AI analysis tool
 
 ## 📈 Performance Analysis
 
