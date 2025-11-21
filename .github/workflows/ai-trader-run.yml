@@ -1,0 +1,339 @@
+name: AI-Trader Automated Trading
+
+on:
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Configuration file to use (e.g., configs/default_config.json)'
+        required: false
+        default: 'configs/default_config.json'
+      market_type:
+        description: 'Market type (us, cn, or crypto)'
+        required: false
+        default: 'us'
+      commit_results:
+        description: 'Commit results to repository (true/false)'
+        required: false
+        default: 'false'
+      analyze_with_ai:
+        description: 'Analyze results with AI agent (true/false)'
+        required: false
+        default: 'false'
+  
+  # Schedule to run daily (optional - can be enabled)
+  # schedule:
+  #   - cron: '0 9 * * 1-5'  # 9 AM UTC, Monday to Friday
+
+jobs:
+  run-trading:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Configure environment variables
+        env:
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ALPHAADVANTAGE_API_KEY: ${{ secrets.ALPHAADVANTAGE_API_KEY }}
+          JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          MATH_HTTP_PORT: 8000
+          SEARCH_HTTP_PORT: 8001
+          TRADE_HTTP_PORT: 8002
+          GETPRICE_HTTP_PORT: 8003
+          AGENT_MAX_STEP: 30
+        run: |
+          # Create .env file from secrets
+          echo "OPENAI_API_BASE=${OPENAI_API_BASE}" > .env
+          echo "OPENAI_API_KEY=${OPENAI_API_KEY}" >> .env
+          echo "ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}" >> .env
+          echo "JINA_API_KEY=${JINA_API_KEY}" >> .env
+          echo "TUSHARE_TOKEN=${TUSHARE_TOKEN}" >> .env
+          echo "MATH_HTTP_PORT=${MATH_HTTP_PORT}" >> .env
+          echo "SEARCH_HTTP_PORT=${SEARCH_HTTP_PORT}" >> .env
+          echo "TRADE_HTTP_PORT=${TRADE_HTTP_PORT}" >> .env
+          echo "GETPRICE_HTTP_PORT=${GETPRICE_HTTP_PORT}" >> .env
+          echo "AGENT_MAX_STEP=${AGENT_MAX_STEP}" >> .env
+          echo "RUNTIME_ENV_PATH=./runtime_env.json" >> .env
+          
+          echo "✅ Environment configured"
+      
+      - name: Prepare market data
+        run: |
+          MARKET_TYPE="${{ github.event.inputs.market_type || 'us' }}"
+          echo "📊 Preparing data for market: ${MARKET_TYPE}"
+          
+          cd data
+          
+          if [ "$MARKET_TYPE" = "us" ]; then
+            # US market data preparation
+            if [ -f "get_interdaily_price.py" ]; then
+              python get_interdaily_price.py || echo "⚠️ Warning: get_interdaily_price.py failed"
+            fi
+            python merge_jsonl.py || echo "⚠️ Warning: merge_jsonl.py failed"
+          elif [ "$MARKET_TYPE" = "cn" ]; then
+            # A-share market data preparation
+            cd A_stock
+            python get_daily_price_a_stock.py || echo "⚠️ Warning: A-stock data fetch failed"
+            python merge_a_stock_jsonl.py || echo "⚠️ Warning: A-stock merge failed"
+            cd ..
+          elif [ "$MARKET_TYPE" = "crypto" ]; then
+            # Cryptocurrency market data preparation
+            cd crypto
+            python get_daily_price_crypto.py || echo "⚠️ Warning: Crypto data fetch failed"
+            python merge_crypto_jsonl.py || echo "⚠️ Warning: Crypto merge failed"
+            cd ..
+          fi
+          
+          cd ..
+          echo "✅ Data preparation completed"
+      
+      - name: Start MCP services
+        run: |
+          echo "🔧 Starting MCP services in background..."
+          cd agent_tools
+          
+          # Start MCP services in background with logging
+          nohup python start_mcp_services.py > ../mcp_services.log 2>&1 &
+          MCP_PID=$!
+          echo "MCP_PID=${MCP_PID}" >> $GITHUB_ENV
+          
+          # Wait for services to start
+          sleep 10
+          
+          # Check if services are running
+          if ps -p $MCP_PID > /dev/null; then
+            echo "✅ MCP services started (PID: ${MCP_PID})"
+          else
+            echo "❌ MCP services failed to start"
+            cat ../mcp_services.log
+            exit 1
+          fi
+          
+          cd ..
+      
+      - name: Run AI trading agent
+        run: |
+          CONFIG_FILE="${{ github.event.inputs.config_file || 'configs/default_config.json' }}"
+          echo "🤖 Running AI trading agent with config: ${CONFIG_FILE}"
+          
+          # Run trading agent
+          python main.py "${CONFIG_FILE}" 2>&1 | tee trading_run.log
+          
+          echo "✅ Trading agent completed"
+      
+      - name: Calculate performance metrics
+        run: |
+          echo "📈 Calculating performance metrics..."
+          
+          # This will calculate metrics for models that ran
+          # The result_tools.py can be imported and used
+          python -c "
+          import sys
+          import json
+          from pathlib import Path
+          from tools.result_tools import calculate_and_save_metrics
+          from tools.general_tools import get_config_value
+          
+          # Read config to get models
+          config_file = '${{ github.event.inputs.config_file || 'configs/default_config.json' }}'
+          with open(config_file) as f:
+              config = json.load(f)
+          
+          market = config.get('market', 'us')
+          for model in config.get('models', []):
+              if model.get('enabled', True):
+                  signature = model.get('signature')
+                  if signature:
+                      print(f'Calculating metrics for {signature}...')
+                      try:
+                          calculate_and_save_metrics(signature, market=market)
+                      except Exception as e:
+                          print(f'Error calculating metrics for {signature}: {e}')
+          " || echo "⚠️ Warning: Metrics calculation had issues"
+          
+          echo "✅ Performance metrics calculated"
+      
+      - name: Analyze results with AI (optional)
+        if: github.event.inputs.analyze_with_ai == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+        run: |
+          echo "🧠 Analyzing results with AI agent..."
+          
+          # Create AI analysis script
+          python -c "
+          import json
+          import os
+          from pathlib import Path
+          from openai import OpenAI
+          
+          # Initialize OpenAI client
+          client = OpenAI(
+              api_key=os.getenv('OPENAI_API_KEY'),
+              base_url=os.getenv('OPENAI_API_BASE')
+          )
+          
+          # Read latest metrics
+          config_file = '${{ github.event.inputs.config_file || 'configs/default_config.json' }}'
+          with open(config_file) as f:
+              config = json.load(f)
+          
+          results_summary = []
+          
+          for model in config.get('models', []):
+              if model.get('enabled', True):
+                  signature = model.get('signature')
+                  metrics_file = Path('data/agent_data') / signature / 'metrics' / 'performance_metrics.jsonl'
+                  
+                  if metrics_file.exists():
+                      # Read last line of metrics
+                      with open(metrics_file, 'r') as f:
+                          lines = f.readlines()
+                          if lines:
+                              latest_metric = json.loads(lines[-1])
+                              results_summary.append(latest_metric)
+          
+          # Generate AI analysis
+          if results_summary:
+              prompt = f'''Analyze these AI trading results and provide insights:
+          
+          {json.dumps(results_summary, indent=2)}
+          
+          Please provide:
+          1. Summary of performance across models
+          2. Key insights and patterns
+          3. Risk assessment
+          4. Recommendations for improvement
+          '''
+              
+              response = client.chat.completions.create(
+                  model='gpt-4',
+                  messages=[
+                      {'role': 'system', 'content': 'You are a financial analyst AI assistant.'},
+                      {'role': 'user', 'content': prompt}
+                  ]
+              )
+              
+              analysis = response.choices[0].message.content
+              
+              # Save analysis
+              with open('ai_analysis.md', 'w') as f:
+                  f.write('# AI Trading Performance Analysis\n\n')
+                  f.write(analysis)
+              
+              print('✅ AI analysis completed')
+              print(analysis)
+          else:
+              print('⚠️ No metrics found for analysis')
+          " || echo "⚠️ Warning: AI analysis failed"
+      
+      - name: Stop MCP services
+        if: always()
+        run: |
+          if [ -n "${{ env.MCP_PID }}" ]; then
+            echo "🛑 Stopping MCP services..."
+            kill ${{ env.MCP_PID }} 2>/dev/null || true
+            sleep 2
+          fi
+      
+      - name: Prepare artifacts
+        run: |
+          echo "📦 Preparing artifacts..."
+          
+          # Create artifacts directory
+          mkdir -p artifacts
+          
+          # Copy logs
+          cp -r data/agent_data artifacts/ 2>/dev/null || echo "No agent_data found"
+          cp -r data/agent_data_astock artifacts/ 2>/dev/null || echo "No agent_data_astock found"
+          cp -r data/agent_data_crypto artifacts/ 2>/dev/null || echo "No agent_data_crypto found"
+          
+          # Copy logs from this run
+          cp trading_run.log artifacts/ 2>/dev/null || true
+          cp mcp_services.log artifacts/ 2>/dev/null || true
+          cp ai_analysis.md artifacts/ 2>/dev/null || true
+          
+          # Create summary file
+          echo "# AI-Trader Run Summary" > artifacts/summary.md
+          echo "" >> artifacts/summary.md
+          echo "- **Date**: $(date -u)" >> artifacts/summary.md
+          echo "- **Config**: ${{ github.event.inputs.config_file || 'configs/default_config.json' }}" >> artifacts/summary.md
+          echo "- **Market**: ${{ github.event.inputs.market_type || 'us' }}" >> artifacts/summary.md
+          echo "- **Workflow**: ${GITHUB_WORKFLOW}" >> artifacts/summary.md
+          echo "- **Run ID**: ${GITHUB_RUN_ID}" >> artifacts/summary.md
+          
+          echo "✅ Artifacts prepared"
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-trader-results-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 30
+      
+      - name: Commit results to repository
+        if: github.event.inputs.commit_results == 'true'
+        run: |
+          echo "💾 Committing results to repository..."
+          
+          # Configure git
+          git config --global user.name "AI-Trader Bot"
+          git config --global user.email "ai-trader-bot@github.com"
+          
+          # Create a results branch if it doesn't exist
+          RESULTS_BRANCH="results/$(date +%Y-%m-%d)"
+          git checkout -b "${RESULTS_BRANCH}" 2>/dev/null || git checkout "${RESULTS_BRANCH}"
+          
+          # Add result files
+          git add data/agent_data*/ 2>/dev/null || true
+          git add artifacts/ 2>/dev/null || true
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "⚠️ No changes to commit"
+          else
+            git commit -m "Add trading results from run ${GITHUB_RUN_NUMBER} on $(date -u)"
+            
+            # Push to repository
+            git push origin "${RESULTS_BRANCH}" || echo "⚠️ Warning: Failed to push results branch"
+            
+            echo "✅ Results committed to branch ${RESULTS_BRANCH}"
+          fi
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🎉 AI-Trader Run Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Config File**: ${{ github.event.inputs.config_file || 'configs/default_config.json' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Market Type**: ${{ github.event.inputs.market_type || 'us' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit Results**: ${{ github.event.inputs.commit_results || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **AI Analysis**: ${{ github.event.inputs.analyze_with_ai || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Results have been uploaded as artifacts and are available for download." >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "artifacts/summary.md" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat artifacts/summary.md >> $GITHUB_STEP_SUMMARY
+          fi
