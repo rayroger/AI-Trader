@@ -128,7 +128,7 @@ def reader_qa(
             "params": params,
         }
         
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         
         if response.status_code != 200:
             error_msg = f"Jina Reader returned status {response.status_code}: {response.text}"
@@ -138,7 +138,10 @@ def reader_qa(
         response_data = response.json()
         
         # Try to extract answer from response
-        # Handle different response formats
+        # Handle different response formats:
+        # - {"answer": "..."} - standard Q&A response
+        # - {"data": "..." or {...}} - wrapped response format
+        # - {"content": "..."} - content-based response
         answer = None
         if isinstance(response_data, dict):
             answer = response_data.get("answer") or response_data.get("data") or response_data.get("content")
