@@ -131,8 +131,8 @@ class BaseAgent_Hour(BaseAgent):
         assert has_time1 == has_time2, "init_date and end_date must have the same time format"
         has_time = has_time1
         if has_time:
-            init_dt = datetime.strptime(init_date, "%Y-%m-%d %H:%M:%S")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S")
+            init_dt = parse_datetime(init_date)
+            end_dt = parse_datetime(end_date)
         else:
             raise ValueError("Only support hour-level trading. Please use YYYY-MM-DD HH:MM:SS format.")
         
