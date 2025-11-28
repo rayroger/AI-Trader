@@ -123,7 +123,6 @@ def get_daily_price(SYMBOL: str):
         error_msg = data.get("Note") or data.get("Information")
         print(f"Error fetching {SYMBOL}: {error_msg}")
         exit()
-        return
     if OUTPUTSIZE == "full":
         data = filter_data(data, "2025-10-01")
     
