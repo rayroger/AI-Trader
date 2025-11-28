@@ -53,6 +53,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ALPHAADVANTAGE_API_KEY: ${{ secrets.ALPHAADVANTAGE_API_KEY }}
           JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
+          JINA_API_BASE: ${{ secrets.JINA_API_BASE }}
+          JINA_USE_READER: 'true'
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           MATH_HTTP_PORT: 8000
           SEARCH_HTTP_PORT: 8001
@@ -65,6 +67,8 @@ jobs:
           echo "OPENAI_API_KEY=${OPENAI_API_KEY}" >> .env
           echo "ALPHAADVANTAGE_API_KEY=${ALPHAADVANTAGE_API_KEY}" >> .env
           echo "JINA_API_KEY=${JINA_API_KEY}" >> .env
+          echo "JINA_API_BASE=${JINA_API_BASE}" >> .env
+          echo "JINA_USE_READER=${JINA_USE_READER}" >> .env
           echo "TUSHARE_TOKEN=${TUSHARE_TOKEN}" >> .env
           echo "MATH_HTTP_PORT=${MATH_HTTP_PORT}" >> .env
           echo "SEARCH_HTTP_PORT=${SEARCH_HTTP_PORT}" >> .env
@@ -176,6 +180,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          JINA_API_KEY: ${{ secrets.JINA_API_KEY }}
+          JINA_API_BASE: ${{ secrets.JINA_API_BASE }}
+          JINA_USE_READER: 'true'
         run: |
           echo "🧠 Analyzing results with AI agent..."
           
@@ -183,14 +190,8 @@ jobs:
           python -c "
           import json
           import os
+          import sys
           from pathlib import Path
-          from openai import OpenAI
-          
-          # Initialize OpenAI client
-          client = OpenAI(
-              api_key=os.getenv('OPENAI_API_KEY'),
-              base_url=os.getenv('OPENAI_API_BASE')
-          )
           
           # Read latest metrics
           config_file = '${{ github.event.inputs.config_file || 'configs/default_config.json' }}'
@@ -212,9 +213,12 @@ jobs:
                               latest_metric = json.loads(lines[-1])
                               results_summary.append(latest_metric)
           
-          # Generate AI analysis
-          if results_summary:
-              prompt = f'''Analyze these AI trading results and provide insights:
+          if not results_summary:
+              print('⚠️ No metrics found for analysis')
+              sys.exit(0)
+          
+          # Build prompt for analysis
+          prompt = f'''Analyze these AI trading results and provide insights:
           
           {json.dumps(results_summary, indent=2)}
           
@@ -224,27 +228,81 @@ jobs:
           3. Risk assessment
           4. Recommendations for improvement
           '''
+          
+          analysis = None
+          analysis_source = None
+          
+          # Try Jina Reader first
+          try:
+              from agent_tools.jina_reader import jina_enabled, reader_qa
               
-              response = client.chat.completions.create(
-                  model='gpt-4',
-                  messages=[
-                      {'role': 'system', 'content': 'You are a financial analyst AI assistant.'},
-                      {'role': 'user', 'content': prompt}
-                  ]
-              )
+              if jina_enabled():
+                  print('📡 Attempting analysis with Jina Reader...')
+                  result = reader_qa(prompt, contexts=[json.dumps(results_summary)])
+                  
+                  if result.get('ok') and result.get('answer'):
+                      analysis = result['answer']
+                      analysis_source = 'Jina Reader'
+                      print('✅ Jina Reader analysis successful')
+                  else:
+                      error = result.get('error', 'No answer returned')
+                      print(f'⚠️ Jina Reader failed: {error}')
+              else:
+                  print('ℹ️ Jina Reader not enabled')
+          except ImportError as e:
+              print(f'⚠️ Could not import jina_reader: {e}')
+          except Exception as e:
+              print(f'⚠️ Jina Reader error: {e}')
+          
+          # Fall back to OpenAI if Jina Reader didn't produce a result
+          if analysis is None:
+              openai_api_key = os.getenv('OPENAI_API_KEY', '').strip()
+              openai_api_base = os.getenv('OPENAI_API_BASE', '').strip()
               
-              analysis = response.choices[0].message.content
-              
-              # Save analysis
+              if openai_api_key:
+                  try:
+                      from openai import OpenAI
+                      
+                      print('📡 Attempting analysis with OpenAI...')
+                      client = OpenAI(
+                          api_key=openai_api_key,
+                          base_url=openai_api_base if openai_api_base else None
+                      )
+                      
+                      response = client.chat.completions.create(
+                          model='gpt-4',
+                          messages=[
+                              {'role': 'system', 'content': 'You are a financial analyst AI assistant.'},
+                              {'role': 'user', 'content': prompt}
+                          ]
+                      )
+                      
+                      analysis = response.choices[0].message.content
+                      analysis_source = 'OpenAI'
+                      print('✅ OpenAI analysis successful')
+                  except ImportError as e:
+                      print(f'⚠️ Could not import openai: {e}')
+                  except Exception as e:
+                      print(f'⚠️ OpenAI error: {e}')
+              else:
+                  print('ℹ️ OPENAI_API_KEY not set, skipping OpenAI fallback')
+          
+          # Save analysis if we got one
+          if analysis:
               with open('ai_analysis.md', 'w') as f:
                   f.write('# AI Trading Performance Analysis\n\n')
+                  f.write(f'*Analysis provided by: {analysis_source}*\n\n')
                   f.write(analysis)
               
-              print('✅ AI analysis completed')
+              print(f'✅ AI analysis completed using {analysis_source}')
               print(analysis)
           else:
-              print('⚠️ No metrics found for analysis')
-          " || echo "⚠️ Warning: AI analysis failed"
+              print('⚠️ No AI analysis available - neither Jina Reader nor OpenAI could provide analysis')
+              print('ℹ️ To enable analysis, either:')
+              print('   - Set JINA_USE_READER=true (uses hosted r.jina.ai, no API key needed)')
+              print('   - Set JINA_API_KEY and JINA_API_BASE for custom Jina instance')
+              print('   - Set OPENAI_API_KEY for OpenAI fallback')
+          " || echo "⚠️ Warning: AI analysis script failed"
       
       - name: Stop MCP services
         if: always()
