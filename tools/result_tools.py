@@ -18,6 +18,7 @@ from tools.price_tools import (all_nasdaq_100_symbols, get_latest_position,
                                get_open_prices, get_today_init_position,
                                get_yesterday_date,
                                get_yesterday_open_and_close_price)
+from utils.datetime_utils import parse_datetime
 
 
 def get_currency_symbol(market: str = "us") -> str:
@@ -368,8 +369,8 @@ def calculate_annualized_return(portfolio_values: Dict[str, float]) -> float:
         return 0.0
 
     # Calculate investment days
-    start_date = datetime.strptime(sorted_dates[0], "%Y-%m-%d")
-    end_date = datetime.strptime(sorted_dates[-1], "%Y-%m-%d")
+    start_date = parse_datetime(sorted_dates[0])
+    end_date = parse_datetime(sorted_dates[-1])
     days = (end_date - start_date).days
 
     if days == 0:

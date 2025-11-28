@@ -23,6 +23,7 @@ sys.path.insert(0, project_root)
 from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
 from tools.price_tools import add_no_trade_record
 from prompts.agent_prompt import get_agent_system_prompt, STOP_SIGNAL
+from utils.datetime_utils import parse_datetime
 
 # Load environment variables
 load_dotenv()
@@ -175,24 +176,14 @@ class BaseAgent_Hour(BaseAgent):
                     if max_date is None:
                         max_date = current_date
                     else:
-                        if ' ' in current_date:
-                            current_date_obj = datetime.strptime(current_date, "%Y-%m-%d %H:%M:%S")
-                        else:
-                            current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
-                        
-                        if ' ' in max_date:
-                            max_date_obj = datetime.strptime(max_date, "%Y-%m-%d %H:%M:%S")
-                        else:
-                            max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
+                        current_date_obj = parse_datetime(current_date)
+                        max_date_obj = parse_datetime(max_date)
                         
                         if current_date_obj > max_date_obj:
                             max_date = current_date
             
             if max_date:
-                if has_time:
-                    last_processed_dt = datetime.strptime(max_date, "%Y-%m-%d %H:%M:%S")
-                else:
-                    last_processed_dt = datetime.strptime(max_date, "%Y-%m-%d")
+                last_processed_dt = parse_datetime(max_date)
             REGISTER = False
         else:
             # ensure agent registration if no position file yet
@@ -213,10 +204,9 @@ class BaseAgent_Hour(BaseAgent):
     
         for ts_str in all_timestamps:
             try:
-                if has_time:
-                    ts_dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-                else:
-                    ts_dt = datetime.strptime(ts_str, "%Y-%m-%d").date()
+                ts_dt = parse_datetime(ts_str)
+                if not has_time:
+                    ts_dt = ts_dt.date()
                 # Check if timestamp is in range with boundary rules
                 in_lower = False
                 if last_processed_dt is None:
