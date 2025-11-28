@@ -173,12 +173,15 @@ def get_daily_price(SYMBOL: str):
     # Set ALPHAVANTAGE_OUTPUTSIZE='full' in environment for premium users
     OUTPUTSIZE = os.getenv("ALPHAVANTAGE_OUTPUTSIZE", "compact")
     APIKEY = os.getenv("ALPHAADVANTAGE_API_KEY")
-    url = f'https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&interval={INTERVAL}&outputsize={OUTPUTSIZE}&entitlement=delayed&extended_hours=false&apikey={APIKEY}'
+    # Note: 'entitlement' and 'extended_hours' parameters require premium API access
+    # They are excluded to ensure compatibility with free API keys
+    url = f'https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&interval={INTERVAL}&outputsize={OUTPUTSIZE}&apikey={APIKEY}'
     r = requests.get(url)
     data = r.json()
     print(data)
     if data.get("Note") is not None or data.get("Information") is not None:
-        print(f"Error")
+        error_msg = data.get("Note") or data.get("Information")
+        print(f"Error fetching {SYMBOL}: {error_msg}")
         return
     update_json(data, SYMBOL)
 

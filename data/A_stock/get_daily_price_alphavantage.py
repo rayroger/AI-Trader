@@ -111,14 +111,17 @@ def get_daily_price(SYMBOL: str):
     FUNCTION = "TIME_SERIES_DAILY"
     OUTPUTSIZE = "compact"
     APIKEY = os.getenv("ALPHAADVANTAGE_API_KEY")
+    # Note: 'entitlement' parameter requires premium API access
+    # It is excluded to ensure compatibility with free API keys
     url = (
-        f"https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&entitlement=delayed&outputsize={OUTPUTSIZE}&apikey={APIKEY}"
+        f"https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&outputsize={OUTPUTSIZE}&apikey={APIKEY}"
     )
     r = requests.get(url)
     data = r.json()
     print(data)
     if data.get("Note") is not None or data.get("Information") is not None:
-        print(f"Error")
+        error_msg = data.get("Note") or data.get("Information")
+        print(f"Error fetching {SYMBOL}: {error_msg}")
         exit()
         return
     if OUTPUTSIZE == "full":
