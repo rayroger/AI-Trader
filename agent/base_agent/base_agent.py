@@ -22,6 +22,7 @@ from langchain_openai import ChatOpenAI
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
+from utils.datetime_utils import parse_datetime
 from utils.safe_paths import sanitize_filename
 
 
@@ -542,14 +543,14 @@ class BaseAgent:
                     if max_date is None:
                         max_date = current_date
                     else:
-                        current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
-                        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
+                        current_date_obj = parse_datetime(current_date)
+                        max_date_obj = parse_datetime(max_date)
                         if current_date_obj > max_date_obj:
                             max_date = current_date
 
         # Check if new dates need to be processed
-        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        max_date_obj = parse_datetime(max_date)
+        end_date_obj = parse_datetime(end_date)
 
         if end_date_obj <= max_date_obj:
             return []
