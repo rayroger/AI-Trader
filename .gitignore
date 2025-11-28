@@ -112,7 +112,8 @@ plan.md
 design.md
 deprecated/
 *_SUCCESS.md
-test_*.py
+# Ignore test scripts in root, but keep tests/ directory
+/test_*.py
 *.backup
 /data/*_test_agent/
 *__test*

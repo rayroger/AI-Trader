@@ -22,6 +22,8 @@ from langchain_openai import ChatOpenAI
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
+from utils.safe_paths import sanitize_filename
+
 
 class DeepSeekChatOpenAI(ChatOpenAI):
     """
@@ -270,8 +272,10 @@ class BaseAgentCrypto:
         print(f"✅ Crypto Agent {self.signature} initialization completed")
 
     def _setup_logging(self, today_date: str) -> str:
-        """Set up log file path"""
-        log_path = os.path.join(self.base_log_path, self.signature, "log", today_date)
+        """Set up log file path with sanitized date to avoid forbidden characters"""
+        # Sanitize the date string to replace colons and spaces with safe characters
+        safe_date = sanitize_filename(today_date)
+        log_path = os.path.join(self.base_log_path, self.signature, "log", safe_date)
         if not os.path.exists(log_path):
             os.makedirs(log_path)
         return os.path.join(log_path, "log.jsonl")

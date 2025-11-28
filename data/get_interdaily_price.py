@@ -169,7 +169,9 @@ def get_daily_price(SYMBOL: str):
     # FUNCTION = "TIME_SERIES_DAILY"
     FUNCTION = "TIME_SERIES_INTRADAY"
     INTERVAL = "60min"
-    OUTPUTSIZE = 'full'
+    # Use 'compact' by default to avoid premium feature errors
+    # Set ALPHAVANTAGE_OUTPUTSIZE='full' in environment for premium users
+    OUTPUTSIZE = os.getenv("ALPHAVANTAGE_OUTPUTSIZE", "compact")
     APIKEY = os.getenv("ALPHAADVANTAGE_API_KEY")
     url = f'https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&interval={INTERVAL}&outputsize={OUTPUTSIZE}&entitlement=delayed&extended_hours=false&apikey={APIKEY}'
     r = requests.get(url)

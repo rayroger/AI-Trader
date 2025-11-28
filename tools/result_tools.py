@@ -104,7 +104,7 @@ def get_daily_portfolio_values(
     Get daily portfolio values
 
     Args:
-        signature: Model name
+        modelname: Model name (signature)
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
         market: Market type, "us" for US stocks or "cn" for A-shares
@@ -123,7 +123,7 @@ def get_daily_portfolio_values(
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
 
-    position_file = base_dir / "data" / log_path / signature / "position" / "position.jsonl"
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
     merged_file = get_merged_file_path(market)
 
     if not position_file.exists() or not merged_file.exists():
@@ -131,7 +131,7 @@ def get_daily_portfolio_values(
 
     # Get available date range if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(signature)
+        earliest_date, latest_date = get_available_date_range(modelname)
         if not earliest_date or not latest_date:
             return {}
 
@@ -458,7 +458,7 @@ def calculate_all_metrics(
     Calculate all performance metrics
 
     Args:
-        signature: Model name
+        modelname: Model name (signature)
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
         market: Market type, "us" for US stocks or "cn" for A-shares
@@ -468,7 +468,7 @@ def calculate_all_metrics(
     """
     # Get available date range if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(signature)
+        earliest_date, latest_date = get_available_date_range(modelname)
         if not earliest_date or not latest_date:
             return {
                 "error": "Unable to get available data date range",
@@ -769,8 +769,8 @@ def get_metrics_history(
     Get performance metrics history
 
     Args:
-        signature: Model name
-        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
+        modelname: Model name (signature)
+        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
         limit: Limit number of records returned, None returns all records
 
     Returns:
@@ -785,7 +785,7 @@ def get_metrics_history(
         log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
-        output_dir = base_dir / "data" / log_path / signature / "metrics"
+        output_dir = base_dir / "data" / log_path / modelname / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -877,33 +877,44 @@ def calculate_and_save_metrics(
     Entry function to calculate all metrics and save in JSONL format
 
     Args:
-        signature: Model name (SIGNATURE)
+        modelname: Model name (SIGNATURE)
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
-        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
+        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
         print_report: Whether to print report
         market: Market type ("us" or "cn")
 
     Returns:
         Dictionary containing all metrics and saved file path
     """
-    print(f"Analyzing model: {signature}")
+    if not modelname:
+        print("❌ No model name (signature) provided")
+        return {"error": "No model name provided"}
+    
+    print(f"Analyzing model: {modelname}")
     
     # Show date range to be used if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(signature)
-        if earliest_date and latest_date:
-            if start_date is None:
-                start_date = earliest_date
-                print(f"Using default start date: {start_date}")
-            if end_date is None:
-                end_date = latest_date
-                print(f"Using default end date: {end_date}")
-        else:
-            print("❌ Unable to get available data date range")
+        try:
+            earliest_date, latest_date = get_available_date_range(modelname)
+            if earliest_date and latest_date:
+                if start_date is None:
+                    start_date = earliest_date
+                    print(f"Using default start date: {start_date}")
+                if end_date is None:
+                    end_date = latest_date
+                    print(f"Using default end date: {end_date}")
+            else:
+                print("❌ Unable to get available data date range")
+        except Exception as e:
+            print(f"❌ Error getting date range for {modelname}: {e}")
 
     # Calculate all metrics
-    metrics = calculate_all_metrics(signature, start_date, end_date, market)
+    try:
+        metrics = calculate_all_metrics(modelname, start_date, end_date, market)
+    except Exception as e:
+        print(f"❌ Error calculating metrics for {modelname}: {e}")
+        return {"error": str(e)}
 
     if "error" in metrics:
         print(f"Error: {metrics['error']}")
@@ -911,12 +922,12 @@ def calculate_and_save_metrics(
 
     # Save in JSONL format
     try:
-        saved_file = save_metrics_to_jsonl(metrics, signature, output_dir)
+        saved_file = save_metrics_to_jsonl(metrics, modelname, output_dir)
         print(f"Metrics saved to: {saved_file}")
         metrics["saved_file"] = saved_file
 
         # Get ID of just saved record
-        latest_record = get_latest_metrics(signature, output_dir)
+        latest_record = get_latest_metrics(modelname, output_dir)
         if latest_record:
             metrics["record_id"] = latest_record["id"]
             print(f"Record ID: {latest_record['id']}")
