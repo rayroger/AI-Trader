@@ -166,7 +166,7 @@ def analyze_with_openai(prompt: str, api_key: str, base_url: Optional[str] = Non
         client = OpenAI(**client_kwargs)
         
         response = client.chat.completions.create(
-            model='gpt-4',
+            model='gpt-4o-mini',
             messages=[
                 {
                     'role': 'system',

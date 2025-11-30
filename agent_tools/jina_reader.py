@@ -79,7 +79,10 @@ def reader_qa(
     """
     Query Jina Reader for Q&A-style responses.
     
-    If jina_use_reader() is True, uses hosted r.jina.ai without authentication.
+    Note: The hosted Jina Reader (r.jina.ai) is designed for URL-to-text conversion,
+    not for Q&A operations. Q&A functionality requires a custom Jina instance
+    with JINA_API_KEY and JINA_API_BASE configured.
+    
     If JINA_API_KEY and JINA_API_BASE are set, uses custom endpoint with Bearer auth.
     
     Args:
@@ -96,13 +99,16 @@ def reader_qa(
     
     try:
         if jina_use_reader():
-            # Use hosted Jina Reader (no API key required)
-            url = f"{JINA_READER_HOSTED_URL}/reader"
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-            logger.info("Using hosted Jina Reader at %s", url)
+            # Hosted Jina Reader (r.jina.ai) is for URL-to-text conversion only,
+            # not for Q&A operations. Return an error to allow fallback to other services.
+            error_msg = (
+                "Hosted Jina Reader (r.jina.ai) does not support Q&A operations. "
+                "It is designed for URL-to-text conversion only. "
+                "For Q&A functionality, configure JINA_API_KEY and JINA_API_BASE "
+                "for a custom Jina instance, or use OpenAI as a fallback."
+            )
+            logger.warning(error_msg)
+            return {"ok": False, "error": error_msg}
         else:
             # Use custom Jina instance with API key
             jina_api_key = os.environ.get("JINA_API_KEY", "").strip()
